@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PSA Teşhis</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">PSA Teşhis</div>
+  <div class="conn"><span id="led" class="led"></span><span id="connText">Bağlı değil</span></div>
+</header>
+
+<main id="view"></main>
+
+<nav class="tabs">
+  <button data-v="baglan" class="on"><i>⚡</i>Bağlan</button>
+  <button data-v="ariza"><i>⚠</i>Arızalar</button>
+  <button data-v="canli"><i>∿</i>Canlı</button>
+  <button data-v="rapor"><i>☰</i>Raporlar</button>
+  <button data-v="log"><i>›_</i>Log</button>
+</nav>
+
+<div id="modal" class="modal" hidden>
+  <div class="box">
+    <h3 id="mTitle"></h3>
+    <div id="mBody"></div>
+    <div class="row end" id="mBtns"></div>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="elm.js"></script>
+<script src="dtc.js"></script>
+<script src="diag.js"></script>
+<script src="sim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

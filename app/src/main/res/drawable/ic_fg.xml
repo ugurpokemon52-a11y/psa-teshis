@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- motor arıza lambası benzeri sembol -->
+    <path
+        android:fillColor="#F2A900"
+        android:pathData="M36,44 L44,44 L44,40 L58,40 L58,44 L64,44 L68,48 L72,48 L72,44 L76,44 L76,62 L72,62 L72,58 L68,58 L64,66 L44,66 L40,62 L36,62 L36,58 L32,58 L32,50 L36,50 Z" />
+    <path
+        android:fillColor="#1B1D20"
+        android:pathData="M48,50 L60,50 L60,54 L48,54 Z" />
+</vector>
