@@ -101,10 +101,28 @@ async function e2e(opt, label) {
   ok(!log.some(l => l.includes('geç gelen')), 'geç cevap karışması yok');
 }
 
+async function realCar() {
+  console.log('Uçtan uca: Hüseyin\'in aracı (pin 3/8 + bozuk FC mod 1)');
+  const { elm } = mkPair({ psaBlocked: true, fcUserBroken: true });
+  const init = await elm.init();
+  ok(init.carOk, 'araç bağlı');
+  const vin = await P.readVin(elm);
+  ok(vin === 'VF7NC5GZTFY000000', 'VIN bozuk FC mod 1 ile de okunur: ' + vin);
+  const scan = { ecus: [], obd: await P.readObdCodes(elm) };
+  for (const e of P.ECUS) scan.ecus.push(await P.readEcu(elm, e));
+  ok(P.psaBlocked(scan), 'pin 3/8 durumu tespit edildi');
+  const sup = await P.supportedPids(elm);
+  ok(sup.has(0x0C), 'canlı veri PSA taramasından sonra çalışır');
+}
+
 (async () => {
   await unit();
   await e2e({}, 'normal adaptör');
   await e2e({ fcSupported: false }, 'akış kontrolü desteklemeyen klon');
+  await realCar();
+  { const { elm } = mkPair({}); await elm.init(); const sc = { ecus: [], obd: await P.readObdCodes(elm) };
+    for (const e of P.ECUS) sc.ecus.push(await P.readEcu(elm, e));
+    ok(!P.psaBlocked(sc), 'normal araçta pin uyarısı çıkmaz'); }
   console.log(`\n${pass} geçti, ${fail} hata`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

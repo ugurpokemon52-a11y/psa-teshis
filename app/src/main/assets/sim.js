@@ -28,6 +28,9 @@
       this.echo = true; this.hdrOn = false; this.spaces = true;
       this.sh = '7DF'; this.cra = null;
       this.fcSupported = opt.fcSupported !== false;
+      this.fcUserBroken = !!opt.fcUserBroken; // mod 1 'OK' der ama çalışmaz (senin adaptör)
+      this.psaBlocked = !!opt.psaBlocked;     // PSA tanı hattı pin 3/8'de: üretici adresleri cevap vermez
+      this.fcMode = '0';
       this.car = makeCar();
       this.delay = opt.delay == null ? 25 : opt.delay;
       this.t0 = Date.now();
@@ -64,6 +67,7 @@
       if (a.startsWith('SH')) { this.sh = a.slice(2); return 'OK'; }
       if (a === 'CRA') { this.cra = null; return 'OK'; }
       if (a.startsWith('CRA')) { this.cra = a.slice(3); return 'OK'; }
+      if (a.startsWith('FCSM')) { if (!this.fcSupported) return '?'; this.fcMode = a.slice(4); return 'OK'; }
       if (a.startsWith('FC')) return this.fcSupported ? 'OK' : '?';
       return 'OK';
     }
@@ -78,7 +82,9 @@
       const pad = a => { const x = a.slice(); while (x.length < 8) x.push(0x55); return x; };
       if (d.length <= 7) return [this.fmt(h, pad([d.length, ...d]))];
       const out = [this.fmt(h, [0x10 | (d.length >> 8), d.length & 0xFF, ...d.slice(0, 6)])];
-      if (!this.fcSupported && this.sh !== '7DF' && this.sh !== '7E0') return out; // yanlış akış kontrolü: devamı gelmez
+      const obd = this.sh === '7DF' || this.sh === '7E0';
+      if (!this.fcSupported && !obd) return out; // yanlış akış kontrolü: devamı gelmez
+      if (this.fcUserBroken && this.fcMode === '1') return out;
       let sn = 1;
       for (let i = 6; i < d.length; i += 7) { out.push(this.fmt(h, pad([0x20 | (sn & 0x0F), ...d.slice(i, i + 7)]))); sn++; }
       return out;
@@ -87,7 +93,7 @@
     route(req) {
       if (this.sh === '7DF' || this.sh === '7E0') return this.obd(req);
       const e = this.car[this.sh];
-      if (!e) return [];
+      if (!e || this.psaBlocked) return [];
       const R = d => [{ h: e.rx, d }];
       const sid = req[0];
       if (e.proto === 'UDS') {

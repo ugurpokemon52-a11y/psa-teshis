@@ -203,7 +203,13 @@
   ];
 
   async function selectEngineObd(elm) {
-    return elm.select('7E0', '7E8');
+    return elm.selectObd('7E0', '7E8');
+  }
+
+  /* Standart OBD cevap verdiği halde hiçbir PSA beyni cevap vermediyse: tanı hattı OBD pin 3/8'de, ELM327 6/14'te */
+  function psaBlocked(scan) {
+    const obdOk = scan.obd && (scan.obd.kayitliOk || scan.obd.bekleyenOk);
+    return !!obdOk && scan.ecus.length > 0 && scan.ecus.every(e => !e.present);
   }
 
   async function obdQuery(elm, pid) {
@@ -239,6 +245,6 @@
     try { return def.f(m.d.slice(2)); } catch (e) { return null; }
   }
 
-  Object.assign(P, { readEcu, clearEcu, readObdCodes, clearObd, readVin, readMil, supportedPids, readPid, selectEngineObd, parseUds, parseKwp });
+  Object.assign(P, { readEcu, clearEcu, psaBlocked, readObdCodes, clearObd, readVin, readMil, supportedPids, readPid, selectEngineObd, parseUds, parseKwp });
   if (typeof module !== 'undefined' && module.exports) module.exports = P;
 })(typeof window !== 'undefined' ? window : globalThis);

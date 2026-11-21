@@ -231,10 +231,11 @@ async function fullScan() {
       n++;
     }
     setProg(1, 'Bitti');
+    res.psaBlocked = P.psaBlocked(res);
     S.scan = res;
     saveReport(res);
     const tot = res.ecus.reduce((a, e) => a + e.dtcs.length, 0);
-    toast(tot ? tot + ' arıza kodu bulundu' : 'Arıza kodu yok', 3000);
+    toast(res.psaBlocked ? 'PSA beyinlerine ulaşılamadı (pin 3/8)' : tot ? tot + ' arıza kodu bulundu' : 'Arıza kodu yok', 3500);
   } catch (e) {
     addLog('!', 'Tarama hatası: ' + e.message);
     toast('Tarama yarıda kaldı: ' + e.message, 4000);
@@ -345,12 +346,18 @@ function vAriza() {
   if (!S.busy) h += '<div class="row" style="margin-top:10px"><button class="btn sm" onclick="shareScan()">Paylaş</button><span class="sp"></span><button class="btn sm red" onclick="clearAll()">Tüm kodları sil</button></div>';
   h += '</div>';
 
+  if (sc.psaBlocked) {
+    h += '<div class="card"><h2>PSA beyinlerine ulaşılamadı</h2>' +
+      '<div class="warn">Araç standart OBD\'ye cevap verdi ama hiçbir PSA beyni cevap vermedi. Bu araçta PSA\'nın tanı hattı (Diagbox\'ın kullandığı hat) OBD soketinin <b>3 ve 8 numaralı pinlerinde</b>. Standart ELM327 adaptör ise sadece <b>6 ve 14</b>\'e bağlı. Bu donanım sınırı, uygulama ayarıyla aşılamaz.</div>' +
+      '<div class="mute">Çözüm: soketin 3/8 pinlerini adaptörün 6/14 pinlerine yönlendiren bir ara kablo ya da PSA tanı hattını destekleyen bir arayüz. Bağlantı değişince bu uygulama aynen çalışır.</div></div>';
+  }
+
   const order = sc.ecus.slice().sort((a, b) => (b.dtcs.length - a.dtcs.length) || ((b.present ? 1 : 0) - (a.present ? 1 : 0)));
   h += '<div class="card"><h2>Beyinler</h2>';
   order.filter(r => r.present).forEach(r => { h += ecuHtml(r); });
   const none = order.filter(r => !r.present);
   if (none.length) {
-    h += '<details><summary>Cevap vermeyen ' + none.length + ' beyin</summary><div class="mute small" style="margin:6px 0">Araçta bu beyin olmayabilir ya da standart ELM327\'nin bağlanamadığı konfor CAN hattındadır (OBD pin 3/8).</div>' +
+    h += '<details><summary>Cevap vermeyen ' + none.length + ' beyin</summary><div class="mute small" style="margin:6px 0">Araçta bu beyin olmayabilir ya da beyin, standart ELM327\'nin bağlı olmadığı PSA tanı hattındadır (OBD pin 3/8).</div>' +
       none.map(r => esc(r.name)).join(', ') + '</details>';
   }
   h += '</div>';
@@ -386,6 +393,7 @@ function reportText(sc) {
   });
   const none = sc.ecus.filter(e => !e.present).map(e => e.name);
   if (none.length) L.push('Cevap vermeyen: ' + none.join(', '));
+  if (sc.psaBlocked) L.push('NOT: PSA beyinlerine ulaşılamadı. Tanı hattı OBD pin 3/8, adaptör pin 6/14.');
   if (sc.obd) {
     const f = k => !sc.obd[k + 'Ok'] ? 'cevap yok' : sc.obd[k].length ? sc.obd[k].map(c => c.code).join(', ') : 'yok';
     L.push('');
@@ -510,7 +518,7 @@ async function sendCmd() {
   if (!S.conn || !S.elm) { toast('Bağlı değil'); return; }
   if (S.busy) { toast('Bir işlem sürüyor'); return; }
   if (!c.startsWith('AT') && BLOCK.test(c)) { toast('Bu komut engelli (beyne yazma / programlama riski)', 4000); return; }
-  if (c.startsWith('AT') && /^AT(SH|CRA|FC|ST|SP|H|E|S|Z|D|WS)/.test(c)) { S.elm.tx = S.elm.rx = null; S.elm.stCur = null; }
+  if (c.startsWith('AT') && /^AT(SH|CRA|FC|ST|SP|H|E|S|Z|D|WS)/.test(c)) { S.elm.tx = S.elm.rx = null; S.elm.stCur = null; S.elm.fcMode = S.elm.fcHdr = null; }
   el.value = '';
   await S.elm.cmd(c, 8000);
 }

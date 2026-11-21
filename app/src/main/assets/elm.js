@@ -120,6 +120,8 @@
       this.fcOk = false;
       this.countOk = null;
       this.stCur = null;
+      this.fcMode = null;
+      this.fcHdr = null;
     }
 
     onData(t) {
@@ -163,6 +165,7 @@
       while (this.q.length) this.q.shift().res(null);
       this.tx = this.rx = null;
       this.stCur = null;
+      this.fcMode = this.fcHdr = null;
     }
 
     async at(c, timeout) {
@@ -203,7 +206,10 @@
       const f2 = await this.at('ATFCSD300000');
       const f3 = await this.at('ATFCSM1');
       this.fcOk = f1.ok && f2.ok && f3.ok;
-      if (!this.fcOk) await this.at('ATFCSM0');
+      // Standart OBD için adaptörün kendi akış kontrolü (mod 0) kullanılır; bazı klonlar mod 1'i kabul edip uygulamıyor
+      await this.at('ATFCSM0');
+      this.fcMode = '0';
+      this.fcHdr = '7E0';
       pr('Araçla bağlantı deneniyor…');
       await this.selectFunctional();
       const r0 = await this.request('0100', { timeout: 8000, rx: null, rxFilter: isObdRx });
@@ -224,25 +230,37 @@
       this.stCur = v;
     }
 
+    async setFc(mode, hdr) {
+      if (!this.fcOk) return;
+      if (mode === '1' && this.fcHdr !== hdr) { await this.at('ATFCSH' + hdr); this.fcHdr = hdr; }
+      if (this.fcMode !== mode) { await this.at('ATFCSM' + mode); this.fcMode = mode; }
+    }
+
+    // PSA beyni (üretici adresi): elle akış kontrolü
     async select(tx, rx) {
       if (this.tx === tx && this.rx === rx) return true;
       const a = await this.at('ATSH' + tx);
       if (!a.ok) return false;
       await this.at('ATCRA' + rx);
-      if (this.fcOk) await this.at('ATFCSH' + tx);
+      await this.setFc('1', tx);
       this.tx = tx;
       this.rx = rx;
       return true;
     }
 
-    async selectFunctional() {
-      if (this.tx === '7DF' && this.rx === null) return true;
-      await this.at('ATSH7DF');
-      await this.at('ATCRA');
-      if (this.fcOk) await this.at('ATFCSH7E0');
-      this.tx = '7DF';
-      this.rx = null;
+    // Standart OBD (7E0 / 7DF): adaptörün otomatik akış kontrolü
+    async selectObd(tx, rx) {
+      if (this.tx === tx && this.rx === rx) return true;
+      await this.at('ATSH' + tx);
+      await this.at(rx ? 'ATCRA' + rx : 'ATCRA');
+      await this.setFc('0');
+      this.tx = tx;
+      this.rx = rx;
       return true;
+    }
+
+    selectFunctional() {
+      return this.selectObd('7DF', null);
     }
 
     async request(hex, o) {
