@@ -14,7 +14,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const S = {
   view: 'baglan', conn: false, demo: false, state: 'off', stateText: 'Bağlı değil',
   elm: null, sim: null, init: null, busy: false, scan: null, prog: null,
-  live: { on: false, sup: null, vals: {}, sel: null, loop: 0 },
+  live: { on: false, sup: null, vals: {}, sel: [], custom: [], loop: 0, inited: false },
   scanList: [], scanning: false, log: [],
   reports: load('psa_reports', []), km: load('psa_km', ''), devName: ''
 };
@@ -438,67 +438,339 @@ async function repDel(i) {
 }
 
 /* ---------- Canlı veri ---------- */
-function vCanli() {
+const SID = k => 't_' + k.replace(/[^a-zA-Z0-9]/g, '_');
+const DID_RANGES = [
+  { id: 'onerilen', t: 'Önerilen aralıklar (≈1500 değer, 1-2 dk)', r: [[0xD000, 0xD0FF], [0xD400, 0xD4FF], [0x2000, 0x20FF], [0x0100, 0x01FF], [0xF100, 0xF1FF], [0xFD00, 0xFDFF]] },
+  { id: 'd4', t: 'D400–D4FF', r: [[0xD400, 0xD4FF]] },
+  { id: 'd0', t: 'D000–D0FF', r: [[0xD000, 0xD0FF]] },
+  { id: '20', t: '2000–20FF', r: [[0x2000, 0x20FF]] },
+  { id: '01', t: '0100–01FF', r: [[0x0100, 0x01FF]] },
+  { id: 'f1', t: 'F100–F1FF (kimlik bilgileri)', r: [[0xF100, 0xF1FF]] },
+  { id: 'ozel', t: 'Özel aralık…', r: null }
+];
+const DID_ECUS = ['motor', 'sanziman', 'abs', 'bsi'];
+
+function liveInit() {
   const L = S.live;
-  let h = '<div class="card"><h2>Canlı veri</h2><div class="mute">Motor beyninden standart değerler. Yağ basıncı standart OBD verileri arasında yok; yağ basıncı arızaları Arızalar sekmesinde görünür.</div>' +
-    '<div class="row" style="margin-top:10px">' + (L.on ? '<button class="btn red big" onclick="stopLive();render()">Durdur</button>' : '<button class="btn pri big" onclick="startLive()">Başlat</button>') + '</div></div>';
-  if (!L.sup) return h + '<div class="card mute">Başlata basınca araç hangi değerleri destekliyorsa onlar gösterilir.</div>';
-  const defs = P.PIDS.filter(d => L.sup.has(parseInt(d.pid, 16)));
-  if (!defs.length) return h + '<div class="card warn">Motor beyni standart canlı veri vermedi.</div>';
-  h += '<div class="tiles">';
-  defs.forEach(d => {
-    const v = L.vals[d.pid];
-    const w = v != null && d.warn && d.warn(v);
-    const pct = d.max && v != null ? Math.max(0, Math.min(100, Math.abs(v) / d.max * 100)) : 0;
-    h += '<div class="tile' + (w ? ' warnv' : '') + '" id="t' + d.pid + '"><div class="n">' + esc(d.name) + '</div><div class="v">' + (v == null ? '–' : v) + '<span class="u">' + esc(d.unit) + '</span></div>' +
-      (d.max ? '<div class="bar"><div style="width:' + pct + '%"></div></div>' : '') + '</div>';
-  });
-  return h + '</div>';
+  if (!L.inited) {
+    L.inited = true;
+    L.sel = load('psa_live_sel', P.DEFAULT_LIVE);
+    L.custom = load('psa_custom', []);
+    L.hist = {}; L.mm = {}; L.raw = {};
+    L.scan = { running: false, stopReq: false, prog: null, result: load('psa_did_scan', null), ecu: 'motor', range: 'onerilen' };
+  }
+  return L;
 }
+
+function defOf(key) {
+  if (key.startsWith('obd:')) return P.PIDS.find(d => d.key === key) || null;
+  const c = S.live.custom.find(x => x.key === key);
+  return c ? Object.assign({ unit: c.unit || '', max: 0, isPsa: true }, c) : null;
+}
+
+function fmtVal(v) {
+  if (v == null) return '–';
+  if (typeof v === 'number') return String(v).replace('.', ',');
+  return esc(v);
+}
+
+function spark(key) {
+  const h = S.live.hist[key];
+  if (!h || h.length < 2) return '';
+  let lo = Math.min(...h), hi = Math.max(...h);
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const pts = h.map((v, i) => (i * 100 / 59).toFixed(1) + ',' + (22 - (v - lo) / (hi - lo) * 20).toFixed(1)).join(' ');
+  return '<svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline points="' + pts + '"/></svg>';
+}
+
+function tileInner(d) {
+  const L = S.live, k = d.key, v = L.vals[k], mm = L.mm[k];
+  let h = '<div class="n">' + esc(d.name) + (d.isPsa ? ' <span class="pill">PSA</span>' : '') + '</div>' +
+    '<div class="v' + (d.txt ? ' txt' : '') + '">' + fmtVal(v) + '<span class="u">' + esc(d.unit) + '</span></div>';
+  if (d.isPsa && L.raw[k]) h += '<div class="mute small">ham: ' + esc(P.toHex(L.raw[k])) + '</div>';
+  if (mm && !d.txt) h += '<div class="mute small">en düşük ' + fmtVal(mm.min) + ' · en yüksek ' + fmtVal(mm.max) + '</div>';
+  if (!d.txt) h += spark(k);
+  return h;
+}
+
+function vCanli() {
+  const L = liveInit();
+  let h = '<div class="card"><h2>Canlı veri</h2>' +
+    '<div class="row">' + (L.on ? '<button class="btn red" onclick="stopLive();render()">Durdur</button>' : '<button class="btn pri" onclick="startLive()">Başlat</button>') +
+    '<button class="btn" onclick="pickLive()">Değerleri seç (' + L.sel.length + ')</button>' +
+    (L.rec ? '<button class="btn red" onclick="recStop()">● Kaydı bitir (' + L.rec.rows.length + ')</button>' : '<button class="btn" onclick="recStart()">Kayıt başlat</button>') +
+    '<button class="btn sm" onclick="resetMinMax()">Min/maks sıfırla</button></div>' +
+    '<div class="mute small" style="margin-top:8px">Standart değerler doğrudan sokete takılı adaptörle gelir. PSA değerleri (yağ basıncı gibi) için pin 3/8 kablosu gerekir.</div></div>';
+  const defs = L.sel.map(defOf).filter(Boolean);
+  const shown = defs.filter(d => d.isPsa || !L.sup || L.sup.has(parseInt(d.pid, 16)));
+  const hidden = defs.length - shown.length;
+  if (!defs.length) h += '<div class="card mute">Hiç değer seçilmedi. "Değerleri seç"e bas.</div>';
+  else {
+    h += '<div class="tiles">';
+    shown.forEach(d => {
+      const v = L.vals[d.key];
+      const w = typeof v === 'number' && d.warn && d.warn(v);
+      h += '<div class="tile' + (w ? ' warnv' : '') + '" id="' + SID(d.key) + '">' + tileInner(d) + '</div>';
+    });
+    h += '</div>';
+    if (hidden) h += '<div class="mute small" style="margin:8px 4px">' + hidden + ' seçili değeri bu araç desteklemiyor, gizlendi.</div>';
+  }
+  h += vDidCard();
+  return h;
+}
+
+function pickLive() {
+  const L = liveInit();
+  const sel = new Set(L.sel);
+  const groups = {};
+  P.PIDS.forEach(d => {
+    const sup = !L.sup || L.sup.has(parseInt(d.pid, 16));
+    if (L.sup && !sup) return;
+    (groups[d.g] = groups[d.g] || []).push(d);
+  });
+  let html = L.sup ? '' : '<div class="info">Aracın desteklediği değerler ilk "Başlat"tan sonra belli olur. Şimdilik hepsi listeleniyor.</div>';
+  Object.keys(groups).forEach(g => {
+    html += '<div class="grp">' + esc(g) + '</div>';
+    groups[g].forEach(d => {
+      html += '<label class="chk"><input type="checkbox" data-k="' + d.key + '"' + (sel.has(d.key) ? ' checked' : '') + '> ' + esc(d.name) + ' <span class="mute small">' + esc(d.unit) + '</span></label>';
+    });
+  });
+  if (L.custom.length) {
+    html += '<div class="grp">PSA özel (motor beyni vb.)</div>';
+    L.custom.forEach(c => {
+      html += '<label class="chk"><input type="checkbox" data-k="' + esc(c.key) + '"' + (sel.has(c.key) ? ' checked' : '') + '> ' + esc(c.name) + '</label>';
+    });
+  }
+  html += '<div class="mute small" style="margin-top:8px">Az değer seçersen ekran daha hızlı yenilenir.</div>';
+  modal('Canlı değerleri seç', '<div class="picker">' + html + '</div>', [{ t: 'Vazgeç', v: false }, { t: 'Varsayılan', v: 'def' }, { t: 'Kaydet', v: true, cls: 'pri' }]).then(v => {
+    if (v === 'def') L.sel = P.DEFAULT_LIVE.slice();
+    else if (v) {
+      const keys = Array.from(document.querySelectorAll('#mBody input[type=checkbox]')).filter(x => x.checked).map(x => x.dataset.k);
+      // seçim sırasını koru, yenileri sona ekle
+      L.sel = L.sel.filter(k => keys.includes(k)).concat(keys.filter(k => !L.sel.includes(k)));
+    } else return;
+    save('psa_live_sel', L.sel);
+    render();
+  });
+}
+
+function setVal(d, v, raw) {
+  const L = S.live, k = d.key;
+  L.vals[k] = v;
+  if (raw) L.raw[k] = raw;
+  if (typeof v === 'number' && isFinite(v)) {
+    const h = L.hist[k] = L.hist[k] || [];
+    h.push(v); if (h.length > 60) h.shift();
+    const mm = L.mm[k];
+    if (!mm) L.mm[k] = { min: v, max: v }; else { if (v < mm.min) mm.min = v; if (v > mm.max) mm.max = v; }
+  }
+  if (S.view !== 'canli') return;
+  const el = document.getElementById(SID(k));
+  if (!el) return;
+  el.innerHTML = tileInner(d);
+  el.classList.toggle('warnv', !!(typeof v === 'number' && d.warn && d.warn(v)));
+}
+
+function resetMinMax() { S.live.mm = {}; S.live.hist = {}; render(); }
 
 async function startLive() {
   if (!ready()) return;
-  const L = S.live;
-  L.on = true; N.keepScreenOn(true); render();
+  const L = liveInit();
+  if (!L.sel.length) { pickLive(); return; }
+  L.on = true; N.keepScreenOn(true);
   const my = ++L.loop;
   S.busy = true;
+  render();
   try {
-    if (!L.sup) L.sup = await P.supportedPids(S.elm);
-    else await P.selectEngineObd(S.elm);
-    render();
-    const defs = P.PIDS.filter(d => L.sup.has(parseInt(d.pid, 16)));
-    const fast = defs.filter(d => d.max);
-    const slow = defs.filter(d => !d.max);
-    let round = 0;
+    if (!L.sup && L.sel.some(k => k.startsWith('obd:'))) { L.sup = await P.supportedPids(S.elm); render(); }
+    let round = 0, fails = 0;
     while (L.on && L.loop === my && S.conn) {
-      const set = round % 5 === 0 ? fast.concat(slow) : fast;
-      for (const d of set) {
-        if (!L.on || L.loop !== my) break;
-        const v = await P.readPid(S.elm, d);
-        if (v != null) { L.vals[d.pid] = v; updTile(d); }
+      const defs = L.sel.map(defOf).filter(Boolean);
+      const obd = defs.filter(d => !d.isPsa && L.sup && L.sup.has(parseInt(d.pid, 16)) && (d.max || round % 5 === 0));
+      const psa = defs.filter(d => d.isPsa);
+      if (!obd.length && !psa.length) break;
+      let got = 0;
+      if (obd.length) {
+        await P.selectEngineObd(S.elm);
+        for (const d of obd) {
+          if (!L.on || L.loop !== my) break;
+          const v = await P.readPid(S.elm, d);
+          if (v != null) { setVal(d, v); got++; }
+        }
       }
-      if (!defs.length) break;
+      for (const d of psa) {
+        if (!L.on || L.loop !== my) break;
+        const ecu = P.ECUS.find(e => e.id === d.ecu);
+        const r = await P.readDid(S.elm, ecu, d.did, d.proto);
+        if (r.ok) { setVal(d, P.rawNumber(r.data), r.data); got++; }
+      }
+      if (L.rec && got) recRow();
+      fails = got ? 0 : fails + 1;
+      if (fails >= 3) { toast('Değerler okunamıyor. Bağlantıyı kontrol et.', 4000); break; }
       round++;
     }
   } catch (e) { addLog('!', 'Canlı veri: ' + e.message); }
   if (L.loop === my) { L.on = false; S.busy = false; N.keepScreenOn(false); if (S.view === 'canli') render(); }
 }
-function updTile(d) {
-  if (S.view !== 'canli') return;
-  const el = document.getElementById('t' + d.pid);
-  if (!el) { render(); return; }
-  const v = S.live.vals[d.pid];
-  el.querySelector('.v').innerHTML = v + '<span class="u">' + esc(d.unit) + '</span>';
-  el.classList.toggle('warnv', !!(d.warn && d.warn(v)));
-  const b = el.querySelector('.bar > div');
-  if (b && d.max) b.style.width = Math.max(0, Math.min(100, Math.abs(v) / d.max * 100)) + '%';
-}
+
 function stopLive() {
   const L = S.live;
   if (!L.on) return;
   L.on = false; L.loop++;
   S.busy = false;
   N.keepScreenOn(false);
+}
+
+/* ---------- Kayıt (CSV) ---------- */
+function recStart() {
+  const L = liveInit();
+  L.rec = { t0: Date.now(), keys: L.sel.slice(), rows: [] };
+  toast('Kayıt başladı. Canlı veri çalışırken her tur kaydedilir.');
+  if (!L.on) startLive(); else render();
+}
+function recRow() {
+  const L = S.live, r = L.rec;
+  r.rows.push([((Date.now() - r.t0) / 1000).toFixed(1)].concat(r.keys.map(k => { const v = L.vals[k]; return v == null ? '' : String(v).replace('.', ','); })));
+  if (r.rows.length % 10 === 0 && S.view === 'canli') { const b = document.querySelector('[onclick="recStop()"]'); if (b) b.textContent = '● Kaydı bitir (' + r.rows.length + ')'; }
+}
+function recStop() {
+  const L = S.live, r = L.rec;
+  L.rec = null;
+  if (!r || !r.rows.length) { toast('Kayıtta veri yok'); render(); return; }
+  const head = ['zaman_sn'].concat(r.keys.map(k => { const d = defOf(k); return d ? d.name + (d.unit ? ' (' + d.unit + ')' : '') : k; }));
+  const csv = '﻿' + [head].concat(r.rows).map(row => row.map(c => /[;"\n]/.test(c) ? '"' + String(c).replace(/"/g, '""') + '"' : c).join(';')).join('\n');
+  const d = new Date(r.t0);
+  const nm = 'psa-canli-' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0') + '.csv';
+  N.exportFile(nm, csv);
+  render();
+}
+
+/* ---------- PSA özel değer tarayıcı ---------- */
+function vDidCard() {
+  const sc = S.live.scan;
+  let h = '<div class="card"><h2>PSA özel değerler</h2>' +
+    '<div class="mute">Yağ basıncı gibi değerler standart OBD\'de yok, motor beyninin kendi numaralarıyla okunur. PSA bu numaraları yayınlamıyor. Bu tarayıcı beyne sadece <b>okuma</b> isteği gönderir, hiçbir şey yazmaz. Cevap veren numaraları bulur, sen de canlıya ekleyip değerlerine bakarsın.</div>' +
+    '<div class="warn">Pin 3/8 ara kablosu gerekir. Kablo yoksa beyin cevap vermez.</div>';
+  if (sc.running) {
+    const p = sc.prog || { i: 0, total: 1, found: 0 };
+    h += '<div class="prog"><div id="didBar" style="width:' + Math.round(p.i / p.total * 100) + '%"></div></div><div class="mute small" id="didTxt">' + p.i + ' / ' + p.total + ' · bulunan: ' + p.found + '</div>' +
+      '<button class="btn red" style="margin-top:8px" onclick="S.live.scan.stopReq=true">Durdur</button>';
+  } else {
+    h += '<div class="row" style="margin-top:8px"><select id="dEcu">' + DID_ECUS.map(id => { const e = P.ECUS.find(x => x.id === id); return '<option value="' + id + '"' + (sc.ecu === id ? ' selected' : '') + '>' + esc(e.name) + '</option>'; }).join('') + '</select>' +
+      '<select id="dRange" class="grow" onchange="S.live.scan.range=this.value;render()">' + DID_RANGES.map(r => '<option value="' + r.id + '"' + (sc.range === r.id ? ' selected' : '') + '>' + esc(r.t) + '</option>').join('') + '</select></div>';
+    if (sc.range === 'ozel') h += '<div class="row" style="margin-top:8px"><input id="dS" class="grow" placeholder="Başlangıç (ör. D400)" value="' + esc(sc.s || '') + '" autocapitalize="characters"><input id="dE" class="grow" placeholder="Bitiş (ör. D4FF)" value="' + esc(sc.e || '') + '" autocapitalize="characters"></div>';
+    h += '<button class="btn pri big" style="margin-top:8px" onclick="didScan()">Tara</button>';
+  }
+  const res = sc.result;
+  if (res) {
+    const e = P.ECUS.find(x => x.id === res.ecu);
+    h += '<div style="margin-top:12px"><b>' + esc(e ? e.name : res.ecu) + '</b> <span class="mute small">' + (res.proto || '') + ' · ' + new Date(res.date).toLocaleString('tr-TR') + '</span></div>';
+    if (res.error) h += '<div class="warn">' + esc(res.error) + '</div>';
+    else if (!res.found.length) h += '<div class="mute">Bu aralıkta cevap veren değer yok. Başka aralık dene.</div>';
+    else {
+      h += '<div class="mute small" style="margin:6px 0">' + res.found.length + ' değer bulundu. Yağ basıncını bulmak için: rölantide "Değişenleri bul"a bas, sonra devri 2500\'e çıkarıp tekrar bas. Devirle birlikte değişen değerlere bak. Sıcak motorda yağ basıncı rölantide yaklaşık 1-2 bar olur.</div>' +
+        '<div class="row"><button class="btn sm" onclick="didChanges()">Değişenleri bul</button><button class="btn sm" onclick="didShare()">Listeyi paylaş</button></div><div class="list" style="margin-top:6px">';
+      res.found.forEach((f, i) => {
+        const n = P.rawNumber(f.data);
+        const added = S.live.custom.some(c => c.key === didKey(res, f));
+        h += '<div class="item' + (f.changed ? ' chg' : '') + '"><div class="sp"><div><b class="mono">' + f.hex + '</b>' + (f.changed ? ' <span class="pill bad">değişti</span>' : '') + '</div>' +
+          '<div class="mono small">' + esc(P.toHex(f.data)) + (n != null ? ' = ' + n : '') + (f.prevN != null && f.changed ? ' <span class="mute">(önce ' + f.prevN + ')</span>' : '') + '</div></div>' +
+          (added ? '<span class="pill ok">canlıda</span>' : '<button class="btn sm" onclick="didAdd(' + i + ')">+ Canlı</button>') + '</div>';
+      });
+      h += '</div>';
+    }
+  }
+  return h + '</div>';
+}
+
+const didKey = (res, f) => 'psa:' + res.ecu + ':' + res.proto + ':' + f.hex;
+
+function parseHex4(s) { const v = parseInt(String(s || '').trim(), 16); return isNaN(v) ? null : v; }
+
+async function didScan() {
+  if (!ready()) return;
+  const L = liveInit(), sc = L.scan;
+  stopLive();
+  sc.ecu = $('#dEcu').value;
+  sc.range = $('#dRange').value;
+  let ranges;
+  if (sc.range === 'ozel') {
+    sc.s = $('#dS').value.trim().toUpperCase(); sc.e = $('#dE').value.trim().toUpperCase();
+    const a = parseHex4(sc.s), b = parseHex4(sc.e);
+    if (a == null || b == null || b < a || a > 0xFFFF || b > 0xFFFF) { toast('Aralığı onaltılık yaz: ör. D400 – D4FF'); return; }
+    if (b - a > 4095) { toast('Tek seferde en fazla 4096 değer taranabilir'); return; }
+    ranges = [[a, b]];
+  } else ranges = DID_RANGES.find(r => r.id === sc.range).r;
+  const ecu = P.ECUS.find(e => e.id === sc.ecu);
+  sc.running = true; sc.stopReq = false; sc.prog = null;
+  S.busy = true; N.keepScreenOn(true);
+  render();
+  let last = 0;
+  try {
+    const res = await P.scanDids(S.elm, ecu, ranges, {
+      stop: () => sc.stopReq,
+      onProgress: (i, total, found) => {
+        sc.prog = { i, total, found };
+        if (Date.now() - last < 250 && i < total) return;
+        last = Date.now();
+        const bar = document.getElementById('didBar'), txt = document.getElementById('didTxt');
+        if (bar) bar.style.width = Math.round(i / total * 100) + '%';
+        if (txt) txt.textContent = i + ' / ' + total + ' · bulunan: ' + found;
+      }
+    });
+    sc.result = { ecu: ecu.id, proto: res.proto, date: Date.now(), error: res.error ? res.error + (res.error === 'Beyin cevap vermedi' ? '. Pin 3/8 ara kablosu takılı mı?' : '') : null,
+      found: res.found.map(f => ({ did: f.did, hex: f.hex, data: f.data })) };
+    save('psa_did_scan', sc.result);
+    addLog('#', 'PSA tarama: ' + ecu.name + ' ' + (res.proto || '-') + ', ' + res.found.length + ' değer' + (res.stopped ? ' (durduruldu)' : ''));
+    res.found.forEach(f => addLog('#', '  ' + f.hex + ' = ' + P.toHex(f.data)));
+  } catch (e) { addLog('!', 'PSA tarama: ' + e.message); }
+  sc.running = false; S.busy = false; N.keepScreenOn(false);
+  render();
+}
+
+async function didChanges() {
+  if (!ready()) return;
+  const res = S.live.scan.result;
+  if (!res || !res.found.length) return;
+  const ecu = P.ECUS.find(e => e.id === res.ecu);
+  S.busy = true; toast('Değerler tekrar okunuyor…');
+  let n = 0;
+  for (const f of res.found) {
+    const r = await P.readDid(S.elm, ecu, f.did, res.proto);
+    if (!r.ok) continue;
+    const before = P.toHex(f.data);
+    f.prevN = P.rawNumber(f.data);
+    f.changed = before !== P.toHex(r.data);
+    if (f.changed) n++;
+    f.data = r.data;
+  }
+  S.busy = false;
+  save('psa_did_scan', res);
+  toast(n ? n + ' değer değişti' : 'Değişen değer yok');
+  render();
+}
+
+function didAdd(i) {
+  const L = liveInit(), res = L.scan.result, f = res.found[i];
+  const key = didKey(res, f);
+  const ecu = P.ECUS.find(e => e.id === res.ecu);
+  modal('Canlıya ekle', '<div class="mute">Bu değere bir ad ver (ör. "Yağ basıncı?"). Değer ham sayı olarak gösterilir.</div><input id="mInput" class="grow" style="width:100%;margin-top:10px" value="' + esc(ecu.name + ' ' + f.hex) + '">',
+    [{ t: 'Vazgeç', v: false }, { t: 'Ekle', v: true, cls: 'pri' }]).then(ok => {
+    if (!ok) return;
+    const name = ($('#mInput').value || '').trim() || (ecu.name + ' ' + f.hex);
+    L.custom = L.custom.filter(c => c.key !== key).concat([{ key, ecu: res.ecu, did: f.did, proto: res.proto, hex: f.hex, name }]);
+    if (!L.sel.includes(key)) L.sel.push(key);
+    save('psa_custom', L.custom); save('psa_live_sel', L.sel);
+    toast('Canlıya eklendi');
+    render();
+  });
+}
+
+function didShare() {
+  const res = S.live.scan.result;
+  if (!res) return;
+  const e = P.ECUS.find(x => x.id === res.ecu);
+  N.shareText('PSA özel değerler — ' + (e ? e.name : res.ecu) + ' (' + res.proto + ')\n' + res.found.map(f => f.hex + ' = ' + P.toHex(f.data) + (P.rawNumber(f.data) != null ? ' (' + P.rawNumber(f.data) + ')' : '') + (f.changed ? '  DEĞİŞTİ' : '')).join('\n'));
 }
 
 /* ---------- Log / terminal ---------- */

@@ -177,31 +177,6 @@
 
   /* ---------- Canlı veri (motor beyni, standart PID) ---------- */
 
-  const W = (a, b) => a * 256 + b;
-  P.PIDS = [
-    { pid: '0C', name: 'Motor devri', unit: 'dev/dk', f: d => Math.round(W(d[0], d[1]) / 4), max: 7000 },
-    { pid: '0D', name: 'Hız', unit: 'km/s', f: d => d[0], max: 220 },
-    { pid: '05', name: 'Soğutma suyu', unit: '°C', f: d => d[0] - 40, max: 130, warn: v => v >= 110 },
-    { pid: '5C', name: 'Motor yağı sıcaklığı', unit: '°C', f: d => d[0] - 40, max: 150, warn: v => v >= 130 },
-    { pid: '0F', name: 'Emme havası', unit: '°C', f: d => d[0] - 40, max: 80 },
-    { pid: '04', name: 'Motor yükü', unit: '%', f: d => Math.round(d[0] * 100 / 255), max: 100 },
-    { pid: '11', name: 'Gaz kelebeği', unit: '%', f: d => Math.round(d[0] * 100 / 255), max: 100 },
-    { pid: '0B', name: 'Emme basıncı (MAP)', unit: 'kPa', f: d => d[0], max: 255 },
-    { pid: '10', name: 'Hava akışı (MAF)', unit: 'g/s', f: d => +(W(d[0], d[1]) / 100).toFixed(1), max: 150 },
-    { pid: '0E', name: 'Ateşleme avansı', unit: '°', f: d => +(d[0] / 2 - 64).toFixed(1), max: 60 },
-    { pid: '06', name: 'Kısa yakıt düzeltme', unit: '%', f: d => +((d[0] - 128) * 100 / 128).toFixed(1), max: 25, warn: v => Math.abs(v) >= 20 },
-    { pid: '07', name: 'Uzun yakıt düzeltme', unit: '%', f: d => +((d[0] - 128) * 100 / 128).toFixed(1), max: 25, warn: v => Math.abs(v) >= 15 },
-    { pid: '23', name: 'Yakıt rayı basıncı', unit: 'bar', f: d => +(W(d[0], d[1]) * 10 / 100).toFixed(1), max: 250 },
-    { pid: '42', name: 'Beyin voltajı', unit: 'V', f: d => +(W(d[0], d[1]) / 1000).toFixed(2), max: 16, warn: v => v < 11.8 || v > 15 },
-    { pid: '33', name: 'Atmosfer basıncı', unit: 'kPa', f: d => d[0], max: 110 },
-    { pid: '46', name: 'Dış hava', unit: '°C', f: d => d[0] - 40, max: 60 },
-    { pid: '2F', name: 'Yakıt seviyesi', unit: '%', f: d => Math.round(d[0] * 100 / 255), max: 100 },
-    { pid: '1F', name: 'Çalışma süresi', unit: 'sn', f: d => W(d[0], d[1]), max: 0 },
-    { pid: '31', name: 'Kod silindikten sonra yol', unit: 'km', f: d => W(d[0], d[1]), max: 0 },
-    { pid: '30', name: 'Kod silindikten sonra ısınma', unit: 'kez', f: d => d[0], max: 0 },
-    { pid: '21', name: 'Arıza lambası yanıkken yol', unit: 'km', f: d => W(d[0], d[1]), max: 0 }
-  ];
-
   async function selectEngineObd(elm) {
     return elm.selectObd('7E0', '7E8');
   }
@@ -227,7 +202,7 @@
   async function supportedPids(elm) {
     await selectEngineObd(elm);
     const sup = new Set();
-    for (const base of [0x00, 0x20, 0x40]) {
+    for (const base of [0x00, 0x20, 0x40, 0x60, 0x80, 0xA0]) {
       if (base && !sup.has(base)) break;
       const r = await obdQuery(elm, P.h2(base));
       const m = r.msgs.find(x => x.d[0] === 0x41 && x.d[1] === base && x.d.length >= 6);
@@ -240,11 +215,74 @@
   async function readPid(elm, def) {
     const id = parseInt(def.pid, 16);
     const r = await obdQuery(elm, def.pid);
-    const m = r.msgs.find(x => x.d[0] === 0x41 && x.d[1] === id && x.d.length >= 3);
+    const m = r.msgs.find(x => x.d[0] === 0x41 && x.d[1] === id && x.d.length >= 2 + (def.n || 1));
     if (!m) return null;
     try { return def.f(m.d.slice(2)); } catch (e) { return null; }
   }
 
-  Object.assign(P, { readEcu, clearEcu, psaBlocked, readObdCodes, clearObd, readVin, readMil, supportedPids, readPid, selectEngineObd, parseUds, parseKwp });
+  /* ---------- PSA özel değerler (üretici tanımlayıcıları, sadece okuma) ----------
+     UDS 0x22 (ReadDataByIdentifier, 2 baytlık DID) / KWP 0x21 (ReadDataByLocalIdentifier, 1 bayt).
+     PSA bu tabloları yayınlamıyor: tarayıcı cevap veren tanımlayıcıları bulur, değeri ham olarak gösterir. */
+
+  const didHex = (did, proto) => proto === 'KWP' ? P.h2(did) : ('000' + did.toString(16).toUpperCase()).slice(-4);
+
+  async function readDid(elm, ecu, did, proto) {
+    if (!await elm.select(ecu.tx, ecu.rx)) return { ok: false, err: 'adres' };
+    const req = (proto === 'KWP' ? '21' : '22') + didHex(did, proto);
+    const r = await elm.diag(req);
+    if (r.pos) {
+      const skip = proto === 'KWP' ? 2 : 3; // 61 id ... | 62 hi lo ...
+      return { ok: true, data: r.pos.slice(skip), partial: r.partial };
+    }
+    return { ok: false, nrc: r.nrc, none: !r.any };
+  }
+
+  // Ham veriyi sayıya çevir: 1-4 bayt büyük-uçlu işaretsiz
+  function rawNumber(data) {
+    if (!data || !data.length || data.length > 4) return null;
+    let v = 0;
+    for (const b of data) v = v * 256 + b;
+    return v;
+  }
+
+  async function detectProto(elm, ecu) {
+    if (!await elm.select(ecu.tx, ecu.rx)) return { error: 'Adaptör adresi kabul etmedi' };
+    const s = await elm.diag('3E00');
+    if (s.pos) return { proto: 'UDS' };
+    const k = await elm.diag('3E');
+    if (k.pos) return { proto: 'KWP' };
+    if (s.nrc != null || k.nrc != null || s.any || k.any) return { proto: 'UDS' };
+    return { error: 'Beyin cevap vermedi' };
+  }
+
+  /* Aralık tarama. ranges: [[başlangıç, bitiş], ...]. o.onProgress(i, total, found), o.stop() true dönerse durur */
+  async function scanDids(elm, ecu, ranges, o) {
+    o = o || {};
+    const out = { proto: null, found: [], session: false, error: null, stopped: false };
+    const d = await detectProto(elm, ecu);
+    if (d.error) { out.error = d.error; return out; }
+    out.proto = d.proto;
+    if (out.proto === 'KWP') ranges = [[0x00, 0xFF]];
+    const total = ranges.reduce((a, r) => a + (r[1] - r[0] + 1), 0);
+    let i = 0, sinceTp = 0;
+    for (const [start, end] of ranges) {
+      for (let did = start; did <= end; did++) {
+        if (o.stop && o.stop()) { out.stopped = true; return out; }
+        let r = await readDid(elm, ecu, did, out.proto);
+        if (!r.ok && (r.nrc === 0x7F || r.nrc === 0x22 || r.nrc === 0x33) && !out.session) {
+          // Varsayılan oturumda izin yok: genişletilmiş oturum aç ve tekrar dene
+          const se = await elm.diag(out.proto === 'KWP' ? '10C0' : '1003');
+          if (se.pos) { out.session = true; r = await readDid(elm, ecu, did, out.proto); }
+        }
+        if (r.ok) out.found.push({ did, hex: didHex(did, out.proto), data: r.data, partial: r.partial });
+        if (out.session && ++sinceTp >= 25) { sinceTp = 0; await elm.diag(out.proto === 'KWP' ? '3E' : '3E00'); }
+        i++;
+        if (o.onProgress) o.onProgress(i, total, out.found.length);
+      }
+    }
+    return out;
+  }
+
+  Object.assign(P, { readEcu, clearEcu, psaBlocked, readObdCodes, clearObd, readVin, readMil, supportedPids, readPid, selectEngineObd, parseUds, parseKwp, readDid, scanDids, detectProto, rawNumber, didHex });
   if (typeof module !== 'undefined' && module.exports) module.exports = P;
 })(typeof window !== 'undefined' ? window : globalThis);

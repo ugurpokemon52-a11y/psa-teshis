@@ -2,7 +2,7 @@
 /* Protokol testleri: sahte ELM327 + PSA aracı ile uçtan uca. Çalıştır: node test/run.js */
 const path = require('path');
 const A = p => path.join(__dirname, '..', 'app', 'src', 'main', 'assets', p);
-['elm.js', 'dtc.js', 'diag.js', 'sim.js'].forEach(f => require(A(f)));
+['elm.js', 'dtc.js', 'pids.js', 'diag.js', 'sim.js'].forEach(f => require(A(f)));
 const P = globalThis.PSA;
 
 let fail = 0, pass = 0;
@@ -101,6 +101,38 @@ async function e2e(opt, label) {
   ok(!log.some(l => l.includes('geç gelen')), 'geç cevap karışması yok');
 }
 
+async function psaValues() {
+  console.log('Uçtan uca: PSA özel değer tarayıcı + yeni PID tablosu');
+  const { elm } = mkPair({});
+  await elm.init();
+  const m = await P.scanDids(elm, ecu('motor'), [[0xD400, 0xD4FF], [0xF190, 0xF190]]);
+  ok(m.proto === 'UDS' && !m.error, 'motor UDS tespiti');
+  ok(m.found.map(f => f.hex).join(',') === 'D40A,D40B,D412,F190', 'bulunan DID listesi: ' + m.found.map(f => f.hex).join(','));
+  const op = P.rawNumber(m.found[0].data);
+  ok(op > 2300 && op < 2900, 'yağ basıncı (demo) ham değer ' + op);
+  ok(P.rawNumber(m.found[3].data) === null, '4 bayttan uzun veri sayıya çevrilmez');
+  const g = await P.scanDids(elm, ecu('sanziman'), [[0xD400, 0xD4FF]]);
+  ok(g.proto === 'KWP' && g.found.length === 1 && g.found[0].hex === '05', 'şanzıman KWP 21xx taraması');
+  const r = await P.readDid(elm, ecu('motor'), 0xD40B, 'UDS');
+  ok(r.ok && P.rawNumber(r.data) === 3000, 'tek DID okuma');
+  let stopped = false, n = 0;
+  const s2 = await P.scanDids(elm, ecu('motor'), [[0xD000, 0xD0FF]], { stop: () => n >= 10, onProgress: () => { n++; } });
+  ok(s2.stopped && n === 10, 'tarama durdurma');
+  const { elm: e2 } = mkPair({ psaBlocked: true });
+  await e2.init();
+  const b = await P.scanDids(e2, ecu('motor'), [[0xD400, 0xD40F]]);
+  ok(b.error === 'Beyin cevap vermedi', 'kablo yokken anlaşılır hata');
+  // PID formülleri
+  const F = pid => P.PIDS.find(d => d.pid === pid).f;
+  ok(F('23')([0x03, 0xAB]) === 93.9, 'yakıt rayı 93,9 bar (gerçek logdaki değer)');
+  ok(F('42')([0x36, 0xBA]) === 14.01, 'voltaj 14,01 V (gerçek log)');
+  ok(F('0C')([0x0D, 0x98]) === 870, 'devir 870 (gerçek log)');
+  ok(F('A6')([0x00, 0x1B, 0x77, 0x40]) === 180000, 'kilometre');
+  ok(F('03')([2]) === 'Kapalı döngü (normal)', 'yakıt sistemi metni');
+  ok(new Set(P.PIDS.map(d => d.pid)).size === P.PIDS.length, 'PID tablosunda tekrar yok');
+  ok(P.DEFAULT_LIVE.every(k => P.PIDS.some(d => d.key === k)), 'varsayılan seçim tabloda');
+}
+
 async function realCar() {
   console.log('Uçtan uca: Hüseyin\'in aracı (pin 3/8 + bozuk FC mod 1)');
   const { elm } = mkPair({ psaBlocked: true, fcUserBroken: true });
@@ -120,6 +152,7 @@ async function realCar() {
   await e2e({}, 'normal adaptör');
   await e2e({ fcSupported: false }, 'akış kontrolü desteklemeyen klon');
   await realCar();
+  await psaValues();
   { const { elm } = mkPair({}); await elm.init(); const sc = { ecus: [], obd: await P.readObdCodes(elm) };
     for (const e of P.ECUS) sc.ecus.push(await P.readEcu(elm, e));
     ok(!P.psaBlocked(sc), 'normal araçta pin uyarısı çıkmaz'); }

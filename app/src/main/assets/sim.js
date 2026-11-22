@@ -106,13 +106,34 @@
           return R(out);
         }
         if (eq(req, '14FFFFFF')) { e.dtc = []; return [{ h: e.rx, d: [0x7F, 0x14, 0x78] }, { h: e.rx, d: [0x54] }]; }
+        if (sid === 0x22 && req.length === 3) {
+          const did = req[1] * 256 + req[2];
+          const t = (Date.now() - this.t0) / 1000;
+          const v = this.did(did, t);
+          return v ? R([0x62, req[1], req[2], ...v]) : R([0x7F, 0x22, 0x31]);
+        }
         return R([0x7F, sid, 0x11]);
       }
       if (eq(req, '10C0')) return R([0x50, 0xC0]);
       if (eq(req, '3E')) return R([0x7E]);
       if (eq(req, '17FF00')) { const out = [0x57, e.dtc.length]; for (const x of e.dtc) out.push(...x); return R(out); }
       if (eq(req, '14FF00')) { e.dtc = []; return R([0x54, 0xFF, 0x00]); }
+      if (sid === 0x21 && req.length === 2) {
+        if (req[1] === 0x05) return R([0x61, 0x05, 40 + 78]);
+        return R([0x7F, 0x21, 0x12]);
+      }
       return R([0x7F, sid, 0x12]);
+    }
+
+    // Demo: motor beyninde birkaç üretici tanımlayıcısı (gerçek PSA numaraları değil)
+    did(did, t) {
+      if (this.sh !== '6A8') return null;
+      const op = Math.round(2600 + 250 * Math.sin(t)); // mbar
+      if (did === 0xD40A) return [op >> 8, op & 0xFF];
+      if (did === 0xD40B) return [0x0B, 0xB8];
+      if (did === 0xD412) return [0x63];
+      if (did === 0xF190) return 'VF7NC5GZTFY000000'.split('').map(c => c.charCodeAt(0));
+      return null;
     }
 
     obd(req) {
