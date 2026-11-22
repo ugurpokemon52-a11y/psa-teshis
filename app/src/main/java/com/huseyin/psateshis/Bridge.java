@@ -138,6 +138,18 @@ public class Bridge {
     }
 
     @JavascriptInterface
+    public void setBarColor(String hex) {
+        act.runOnUiThread(() -> {
+            try {
+                int c = android.graphics.Color.parseColor(hex);
+                act.getWindow().setStatusBarColor(c);
+                act.getWindow().setNavigationBarColor(c);
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
+    @JavascriptInterface
     public void exportFile(String name, String content) {
         act.runOnUiThread(() -> act.startExport(name, content));
     }

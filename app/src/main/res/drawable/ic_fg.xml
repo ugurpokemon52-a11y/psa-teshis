@@ -4,11 +4,36 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- motor arıza lambası benzeri sembol -->
+    <!-- C4 B7 dairesel kadran halkası -->
     <path
-        android:fillColor="#F2A900"
-        android:pathData="M36,44 L44,44 L44,40 L58,40 L58,44 L64,44 L68,48 L72,48 L72,44 L76,44 L76,62 L72,62 L72,58 L68,58 L64,66 L44,66 L40,62 L36,62 L36,58 L32,58 L32,50 L36,50 Z" />
+        android:pathData="M28,68 A28,28 0 1,1 80,68"
+        android:strokeColor="#38C7F4"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round" />
+    <!-- Kadran ölçek çentikleri -->
     <path
-        android:fillColor="#1B1D20"
-        android:pathData="M48,50 L60,50 L60,54 L48,54 Z" />
+        android:pathData="M54,22 L54,27 M30,36 L34,39 M78,36 L74,39"
+        android:strokeColor="#8A9BB0"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round" />
+    <!-- Citroën çift çavuş (double chevron) -->
+    <path
+        android:pathData="M39,51 L54,39 L69,51"
+        android:strokeColor="#F0F6FC"
+        android:strokeWidth="4.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M39,62 L54,50 L69,62"
+        android:strokeColor="#38C7F4"
+        android:strokeWidth="4.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- Alt teşhis nabız çizgisi -->
+    <path
+        android:pathData="M34,74 L46,74 L50,68 L55,79 L59,74 L74,74"
+        android:strokeColor="#F5A623"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>

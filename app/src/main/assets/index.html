@@ -1,30 +1,91 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" data-theme="ice-blue">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>PSA Teşhis</title>
+<meta name="theme-color" content="#090D14">
+<title>C4 B7 Teşhis — 1.2 PureTech EAT6</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="top">
-  <div class="brand">PSA Teşhis</div>
-  <div class="conn"><span id="led" class="led"></span><span id="connText">Bağlı değil</span></div>
+  <div class="brand-wrap">
+    <div class="chev-badge" aria-hidden="true">
+      <svg viewBox="0 0 28 28" width="22" height="22" fill="none">
+        <path d="M5 13.5L14 6.5L23 13.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M5 20.5L14 13.5L23 20.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="brand-txt">
+      <div class="brand">C4 B7 <span class="brand-sub">Teşhis</span></div>
+      <div class="brand-meta">1.2 PureTech · EAT6</div>
+    </div>
+  </div>
+  <div class="top-right">
+    <button id="themeBtn" class="icon-btn" type="button" title="C4 B7 Kadran Rengini Değiştir" onclick="cycleTheme()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 3a9 9 0 0 1 0 18"/>
+        <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none"/>
+      </svg>
+    </button>
+    <div class="conn" id="connPill" onclick="go('baglan')">
+      <span id="led" class="led"></span>
+      <span id="connText">Bağlı değil</span>
+    </div>
+  </div>
 </header>
 
 <main id="view"></main>
 
-<nav class="tabs">
-  <button data-v="baglan" class="on"><i>⚡</i>Bağlan</button>
-  <button data-v="ariza"><i>⚠</i>Arızalar</button>
-  <button data-v="canli"><i>∿</i>Canlı</button>
-  <button data-v="rapor"><i>☰</i>Raporlar</button>
-  <button data-v="log"><i>›_</i>Log</button>
+<nav class="tabs" role="navigation" aria-label="Ana menü">
+  <button data-v="baglan" class="on" type="button">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/>
+    </svg>
+    <span>Bağlan</span>
+  </button>
+  <button data-v="ariza" type="button">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/>
+      <circle cx="12" cy="17" r="0.8" fill="currentColor" stroke="none"/>
+    </svg>
+    <span>Arızalar</span>
+  </button>
+  <button data-v="canli" type="button">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 21a9 9 0 1 1 9-9"/>
+      <path d="M12 12l4.5-4.5"/>
+      <circle cx="12" cy="12" r="2"/>
+      <path d="M16 19h6M19 16v6"/>
+    </svg>
+    <span>Canlı</span>
+  </button>
+  <button data-v="rapor" type="button">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="8" y1="13" x2="16" y2="13"/>
+      <line x1="8" y1="17" x2="13" y2="17"/>
+    </svg>
+    <span>Raporlar</span>
+  </button>
+  <button data-v="log" type="button">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="4 17 10 11 4 5"/>
+      <line x1="12" y1="19" x2="20" y2="19"/>
+    </svg>
+    <span>Terminal</span>
+  </button>
 </nav>
 
 <div id="modal" class="modal" hidden>
   <div class="box">
-    <h3 id="mTitle"></h3>
+    <div class="modal-head">
+      <h3 id="mTitle"></h3>
+      <button type="button" class="m-close" onclick="closeModal()" aria-label="Kapat">✕</button>
+    </div>
     <div id="mBody"></div>
     <div class="row end" id="mBtns"></div>
   </div>

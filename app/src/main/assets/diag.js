@@ -19,6 +19,16 @@
     { id: 'multimedya', name: 'Multimedya', sub: 'Navigasyon / telematik', tx: '764', rx: '664' }
   ];
 
+  // Standart OBD CAN (pin 6/14) üzerinden UDS 0x22 okunabilen modüller (ara kablo gerektirmez)
+  P.OBD_DID_ECUS = [
+    { id: 'obd_motor', name: 'Motor (OBD 7E0)', sub: '1.2 PureTech · Pin 6/14', tx: '7E0', rx: '7E8', obdCan: true },
+    { id: 'obd_eat6', name: 'EAT6 Şanzıman (OBD 7E1)', sub: 'Aisin TF-71SC · Pin 6/14', tx: '7E1', rx: '7E9', obdCan: true }
+  ];
+
+  function findAnyEcu(id) {
+    return P.ECUS.find(e => e.id === id) || P.OBD_DID_ECUS.find(e => e.id === id) || null;
+  }
+
   const OBD_SRC = { '7E8': 'Motor', '7E9': 'Şanzıman', '7EA': 'Hibrit / diğer', '7EB': 'Diğer' };
 
   /* ---------- PSA beyni: arıza hafızası ---------- */
@@ -175,10 +185,14 @@
     return null;
   }
 
-  /* ---------- Canlı veri (motor beyni, standart PID) ---------- */
+  /* ---------- Canlı veri (motor & EAT6 beyni, standart PID) ---------- */
 
   async function selectEngineObd(elm) {
     return elm.selectObd('7E0', '7E8');
+  }
+
+  async function selectTcuObd(elm) {
+    return elm.selectObd('7E1', '7E9');
   }
 
   /* Standart OBD cevap verdiği halde hiçbir PSA beyni cevap vermediyse: tanı hattı OBD pin 3/8'de, ELM327 6/14'te */
@@ -199,10 +213,11 @@
     return elm.request(cmd + (elm.countOk ? '1' : ''), { timeout: 3000 });
   }
 
-  async function supportedPids(elm) {
-    await selectEngineObd(elm);
+  async function supportedPids(elm, tx, rx) {
+    if (tx) await elm.selectObd(tx, rx || null);
+    else await selectEngineObd(elm);
     const sup = new Set();
-    for (const base of [0x00, 0x20, 0x40, 0x60, 0x80, 0xA0]) {
+    for (const base of [0x00, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0]) {
       if (base && !sup.has(base)) break;
       const r = await obdQuery(elm, P.h2(base));
       const m = r.msgs.find(x => x.d[0] === 0x41 && x.d[1] === base && x.d.length >= 6);
@@ -215,19 +230,24 @@
   async function readPid(elm, def) {
     const id = parseInt(def.pid, 16);
     const r = await obdQuery(elm, def.pid);
-    const m = r.msgs.find(x => x.d[0] === 0x41 && x.d[1] === id && x.d.length >= 2 + (def.n || 1));
+    const minLen = def.rawObd ? 3 : 2 + (def.n || 1);
+    const m = r.msgs.find(x => x.d[0] === 0x41 && x.d[1] === id && x.d.length >= minLen);
     if (!m) return null;
     try { return def.f(m.d.slice(2)); } catch (e) { return null; }
   }
 
   /* ---------- PSA özel değerler (üretici tanımlayıcıları, sadece okuma) ----------
      UDS 0x22 (ReadDataByIdentifier, 2 baytlık DID) / KWP 0x21 (ReadDataByLocalIdentifier, 1 bayt).
-     PSA bu tabloları yayınlamıyor: tarayıcı cevap veren tanımlayıcıları bulur, değeri ham olarak gösterir. */
+     PSA bu tabloları yayınlamıyor: tarayıcı cevap veren tanımlayıcıları bulur, değeri ham veya ölçekli gösterir. */
 
   const didHex = (did, proto) => proto === 'KWP' ? P.h2(did) : ('000' + did.toString(16).toUpperCase()).slice(-4);
 
+  async function selectTarget(elm, ecu) {
+    return ecu.obdCan ? elm.selectObd(ecu.tx, ecu.rx) : elm.select(ecu.tx, ecu.rx);
+  }
+
   async function readDid(elm, ecu, did, proto) {
-    if (!await elm.select(ecu.tx, ecu.rx)) return { ok: false, err: 'adres' };
+    if (!ecu || !await selectTarget(elm, ecu)) return { ok: false, err: 'adres' };
     const req = (proto === 'KWP' ? '21' : '22') + didHex(did, proto);
     const r = await elm.diag(req);
     if (r.pos) {
@@ -245,8 +265,29 @@
     return v;
   }
 
+  // Özel ölçekli DID hesaplama: (ham * scale) + offset
+  function scaleDid(data, cfg) {
+    if (!data || !data.length) return null;
+    cfg = cfg || {};
+    const start = Math.max(0, cfg.byteStart | 0);
+    const len = cfg.byteLen ? Math.min(4, Math.max(1, cfg.byteLen | 0)) : Math.min(4, data.length - start);
+    const slice = data.slice(start, start + len);
+    if (!slice.length) return null;
+    let v = 0;
+    for (const b of slice) v = v * 256 + b;
+    if (cfg.signed) {
+      const max = Math.pow(2, slice.length * 8);
+      if (v >= max / 2) v -= max;
+    }
+    const sc = (cfg.scale != null && cfg.scale !== '' && isFinite(+cfg.scale)) ? +cfg.scale : 1;
+    const off = (cfg.offset != null && cfg.offset !== '' && isFinite(+cfg.offset)) ? +cfg.offset : 0;
+    const res = v * sc + off;
+    const dec = cfg.dec != null ? cfg.dec : (Math.abs(sc) < 1 ? 2 : 1);
+    return +res.toFixed(Math.min(4, Math.max(0, dec)));
+  }
+
   async function detectProto(elm, ecu) {
-    if (!await elm.select(ecu.tx, ecu.rx)) return { error: 'Adaptör adresi kabul etmedi' };
+    if (!ecu || !await selectTarget(elm, ecu)) return { error: 'Adaptör adresi kabul etmedi' };
     const s = await elm.diag('3E00');
     if (s.pos) return { proto: 'UDS' };
     const k = await elm.diag('3E');
@@ -283,6 +324,6 @@
     return out;
   }
 
-  Object.assign(P, { readEcu, clearEcu, psaBlocked, readObdCodes, clearObd, readVin, readMil, supportedPids, readPid, selectEngineObd, parseUds, parseKwp, readDid, scanDids, detectProto, rawNumber, didHex });
+  Object.assign(P, { findAnyEcu, readEcu, clearEcu, psaBlocked, readObdCodes, clearObd, readVin, readMil, supportedPids, readPid, selectEngineObd, selectTcuObd, parseUds, parseKwp, readDid, scanDids, detectProto, rawNumber, scaleDid, didHex });
   if (typeof module !== 'undefined' && module.exports) module.exports = P;
 })(typeof window !== 'undefined' ? window : globalThis);

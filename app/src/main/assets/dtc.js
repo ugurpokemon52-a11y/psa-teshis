@@ -1,6 +1,6 @@
 'use strict';
-/* PSA Teşhis — arıza kodu açıklamaları (SAE J2012 genel kodlar) ve hata tipi (FTB) tabloları.
-   Üreticiye özel kodlar (P1xxx, B1xxx, C1xxx, U1xxx…) için resmi PSA tablosu yok; bunlar "üreticiye özel" olarak gösterilir. */
+/* PSA Teşhis — arıza kodu açıklamaları (SAE J2012 + Citroën C4 B7 / PSA 1.2 PureTech & EAT6 sık görülen kodlar),
+   hata tipi (FTB) tabloları ve PSA VIN (şase no) çözücü. */
 (function (G) {
   const P = G.PSA = G.PSA || {};
 
@@ -63,6 +63,9 @@
     P0532: 'Klima gaz basınç sensörü düşük sinyal', P0533: 'Klima gaz basınç sensörü yüksek sinyal',
     P0560: 'Sistem (akü) voltajı', P0562: 'Sistem (akü) voltajı düşük', P0563: 'Sistem (akü) voltajı yüksek',
     P0571: 'Fren müşürü A devresi',
+    P0597: 'Elektronik termostat ısıtıcı kontrol devresi açık',
+    P0598: 'Elektronik termostat ısıtıcı devresi düşük voltaj',
+    P0599: 'Elektronik termostat ısıtıcı devresi yüksek voltaj',
     P0600: 'Seri iletişim bağlantısı', P0601: 'Motor beyni iç hafıza sağlama (checksum) hatası',
     P0602: 'Motor beyni programlama hatası', P0603: 'Motor beyni kalıcı hafıza (KAM) hatası',
     P0604: 'Motor beyni RAM hatası', P0605: 'Motor beyni ROM hatası', P0606: 'Motor beyni işlemci hatası',
@@ -73,13 +76,17 @@
     P0700: 'Şanzıman kontrol sistemi (şanzıman beyninde arıza var)', P0705: 'Vites konum sensörü (PRND) devresi',
     P0710: 'Şanzıman yağ sıcaklık sensörü devresi', P0711: 'Şanzıman yağ sıcaklık sensörü aralık / performans',
     P0712: 'Şanzıman yağ sıcaklık sensörü düşük sinyal', P0713: 'Şanzıman yağ sıcaklık sensörü yüksek sinyal',
-    P0715: 'Şanzıman giriş / türbin devir sensörü devresi', P0720: 'Şanzıman çıkış devir sensörü devresi',
+    P0715: 'Şanzıman giriş / türbin devir sensörü devresi', P0717: 'Şanzıman giriş / türbin devir sensöründen sinyal yok',
+    P0720: 'Şanzıman çıkış devir sensörü devresi', P0722: 'Şanzıman çıkış devir sensöründen sinyal yok',
     P0725: 'Şanzımana motor devri girişi devresi', P0730: 'Yanlış vites oranı',
     P0731: 'Yanlış vites oranı – 1. vites', P0732: 'Yanlış vites oranı – 2. vites', P0733: 'Yanlış vites oranı – 3. vites',
     P0734: 'Yanlış vites oranı – 4. vites', P0735: 'Yanlış vites oranı – 5. vites', P0736: 'Yanlış vites oranı – geri vites',
     P0740: 'Tork konvertörü kilitleme solenoidi devresi', P0741: 'Tork konvertörü kilitleme performansı / açık kalıyor',
+    P0744: 'Tork konvertörü kilitleme devresi kesintili',
     P0750: 'Vites solenoidi A', P0755: 'Vites solenoidi B', P0760: 'Vites solenoidi C', P0765: 'Vites solenoidi D',
-    P0770: 'Vites solenoidi E', P0850: 'Park / Nötr müşürü giriş devresi',
+    P0770: 'Vites solenoidi E', P0776: 'Basınç kontrol solenoidi B performansı / takılı',
+    P0796: 'Basınç kontrol solenoidi C performansı / takılı', P0850: 'Park / Nötr müşürü giriş devresi',
+    P0868: 'Şanzıman hidrolik yağ basıncı düşük', P0944: 'Şanzıman hidrolik basınç ünitesi basınç kaybı',
     P2096: 'Katalizör sonrası karışım çok fakir (B1)', P2097: 'Katalizör sonrası karışım çok zengin (B1)',
     P2101: 'Gaz kelebeği motoru devresi aralık / performans',
     P2122: 'Gaz pedalı sensörü D düşük sinyal', P2123: 'Gaz pedalı sensörü D yüksek sinyal',
@@ -87,11 +94,57 @@
     P2135: 'Gaz kelebeği sensörü A/B voltaj uyumsuzluğu', P2138: 'Gaz pedalı sensörü D/E voltaj uyumsuzluğu',
     P2177: 'Rölanti dışında karışım çok fakir (B1)', P2178: 'Rölanti dışında karışım çok zengin (B1)',
     P2187: 'Rölantide karışım çok fakir (B1)', P2188: 'Rölantide karışım çok zengin (B1)',
+    P2191: 'Yüksek yükte karışım çok fakir (B1)', P2192: 'Yüksek yükte karışım çok zengin (B1)',
     P2195: 'Ön oksijen sensörü fakirde takılı (B1S1)', P2196: 'Ön oksijen sensörü zenginde takılı (B1S1)',
     P2237: 'Ön oksijen sensörü pozitif akım devresi açık (B1S1)', P2261: 'Turbo bypass valfi mekanik arıza',
     P2263: 'Turbo basınç sistemi performansı', P2270: 'Arka oksijen sensörü fakirde takılı (B1S2)',
     P2271: 'Arka oksijen sensörü zenginde takılı (B1S2)', P2279: 'Emme havası kaçağı',
+    P2600: 'Yardımcı elektrikli soğutma / turbo su pompası devresi',
     P2A00: 'Ön oksijen sensörü aralık / performans (B1S1)',
+
+    // --- PSA / Citroën C4 B7 Üreticiye Özel Kodlar (PureTech 1.2, EAT6, THP, HDi, BSI) ---
+    P1336: 'Üreticiye özel (PSA): Birden fazla silindirde yüksek ateşleme hatası (yakıt kesme)',
+    P1337: 'Üreticiye özel (PSA): Silindir 1 ateşleme hatası (yakıt kesme)',
+    P1338: 'Üreticiye özel (PSA): Silindir 2 ateşleme hatası (yakıt kesme)',
+    P1339: 'Üreticiye özel (PSA): Silindir 3 ateşleme hatası (yakıt kesme)',
+    P1340: 'Üreticiye özel (PSA): Silindir 4 ateşleme hatası (yakıt kesme)',
+    P1385: 'Üreticiye özel (PSA): Süper vuruntu (LSPI) tespiti — yakıt / kurum / buji kontrolü',
+    P15A0: 'Üreticiye özel (PSA): Motor yağ basıncı regülasyonu — basınç beklenenden yüksek',
+    P15A1: 'Üreticiye özel (PSA): Motor yağ basıncı regülasyonu — basınç beklenenden düşük',
+    P15A3: 'Üreticiye özel (PSA): Yağ basınç kontrol elektrovanası devresi',
+    P15A4: 'Üreticiye özel (PSA): Yağ basıncı mekanik arıza / düşük basınç uyarısı',
+    P15A5: 'Üreticiye özel (PSA): Motor yağ basıncı uyumluluk hatası (sensör / pompa)',
+    P15A6: 'Üreticiye özel (PSA): Yağ basıncı çok yüksek (elektrovana takılı)',
+    P15A7: 'Üreticiye özel (PSA): Yağ basıncı alt sınırın altında (yağ süzgeci / pompa)',
+    P15A8: 'Üreticiye özel (PSA): Yağ basıncı atmosferik / sensör makullük hatası',
+    P1631: 'Üreticiye özel (PSA): Motor beyni (ECU) iç arıza',
+    P1632: 'Üreticiye özel (PSA): Motor tork sınırlama / ECU iç güvenlik denetimi',
+    P1701: 'Üreticiye özel (PSA): Otomatik şanzıman (EAT6) güvenlik / koruma modu',
+    P1727: 'Üreticiye özel (PSA): Şanzıman – motor tork sinyali uyumsuzluğu',
+    P1351: 'Üreticiye özel (PSA): Kızdırma bujisi rölesi / ısıtma devresi (HDi)',
+    P1434: 'Üreticiye özel (PSA): DPF katkı (Eolys) pompası arızası',
+    P1435: 'Üreticiye özel (PSA): DPF katkı (Eolys) sistemi iletişim / pompa arızası',
+    P1445: 'Üreticiye özel (PSA): DPF katkı miktarı üst sınırda (filtre doluluk)',
+    P1446: 'Üreticiye özel (PSA): DPF katkı (Eolys) deposu seviyesi çok düşük',
+    P1490: 'Üreticiye özel (PSA): DPF aşırı dolu / rejenerasyon isteği',
+    P1A9C: 'Üreticiye özel (PSA): Start-Stop enerji depolama (süperkapasitör) sağlık durumu',
+    P20E8: 'Üreticiye özel (PSA): AdBlue / üre basınç çok düşük',
+    P20EE: 'Üreticiye özel (PSA): SCR / NOx katalizör verimi düşük',
+    B1003: 'Üreticiye özel (PSA): BSI güvenli telekodlama / yapılandırma hatası',
+    B1805: 'Üreticiye özel (PSA): Marş motoru arızası / marş çekmiyor',
+    B1808: 'Üreticiye özel (PSA): İmmobilizer / anahtar tanıma kilidi',
+    C1380: 'Üreticiye özel (PSA): ABS / ESP devridaim pompası arızası',
+    C1381: 'Üreticiye özel (PSA): ABS / ESP pompa besleme rölesi',
+    C1391: 'Üreticiye özel (PSA): ESP motor torku onayı alınamadı',
+    U1105: 'Üreticiye özel (PSA): Direksiyon açı sensörü ile iletişim yok',
+    U1108: 'Üreticiye özel (PSA): Motor beyni ile CAN iletişim kaybı',
+    U1118: 'Üreticiye özel (PSA): BSI ile iletişim kaybı',
+    U1208: 'Üreticiye özel (PSA): Motor beyninden geçersiz tork/devir verisi',
+    U1209: 'Üreticiye özel (PSA): Otomatik şanzımandan (EAT6) geçersiz veri',
+    U1213: 'Üreticiye özel (PSA): ABS / ESP beyninden geçersiz araç hızı verisi',
+    U1F00: 'Üreticiye özel (PSA): Arıza olayı kaydedilmedi (BSI olay günlüğü)',
+
+    // --- Standart U0xxx Ağ / İletişim ---
     U0001: 'Yüksek hızlı CAN iletişim hattı', U0073: 'Kontrol modülü iletişim hattı kapalı (bus off)',
     U0100: 'Motor beyni ile iletişim kaybı', U0101: 'Şanzıman beyni ile iletişim kaybı',
     U0121: 'ABS / ESP beyni ile iletişim kaybı', U0126: 'Direksiyon açı sensörü ile iletişim kaybı',
@@ -102,13 +155,31 @@
   };
 
   const HINT = {
-    P0524: 'Yağ seviyesi, yağ basınç müşürü ve soketi, yağ pompası ve yağ süzgecinin tıkanıp tıkanmadığı (PureTech motorlarda yağlı kayış parçaları süzgeci tıkayabilir) kontrol edilmeli. Yağ basıncı düşükken motoru zorlamamak gerekir.',
-    P0521: 'Yağ basınç müşürü, kablo ve soketi ile gerçek yağ basıncı (manometre ile) kontrol edilmeli.',
-    P0016: 'Triger kayışı / zamanlama, kam ve krank sensörleri kontrol edilmeli. PureTech motorlarda yıpranmış yağlı kayış bu koda yol açabilir.',
-    P0300: 'Buji, bobin, enjektör ve kompresyon kontrol edilmeli.',
-    P0171: 'Emme havası kaçağı, yakıt basıncı ve hava akış/MAP sensörü kontrol edilmeli.',
-    P0299: 'Turbo hortumları, wastegate ve turbo basınç sensörü kontrol edilmeli.',
-    P0420: 'Katalizör, oksijen sensörleri ve egzoz kaçağı kontrol edilmeli.'
+    P0524: '1.2 PureTech kritik uyarı: Yağ seviyesi, yağ basınç müşürü, yağ basınç elektrovanası ve özellikle karterdeki yağ süzgecinin (yağlı triger kayışı parçacıklarıyla) tıkanıp tıkanmadığı acilen kontrol edilmeli. Yağ basıncı düşükken motoru zorlamayın.',
+    P15A1: '1.2 PureTech kronik kontrol: Yağlı triger kayışı kauçuk döküntüleri karter yağ süzgecini veya vakum pompası filtresini tıkamış olabilir. Yağ dolum kapağından kayış yüzeyini (çatlak/şişme) kontrol edin ve manometre ile gerçek yağ basıncını ölçtürün.',
+    P15A4: '1.2 PureTech yağ basıncı uyarısı: Yağ süzgeci tıkanıklığı, yağ basınç kontrol elektrovanası ve doğru yağ viskozitesi (PSA B71 2312 0W-30 / 2297) kontrol edilmeli.',
+    P15A7: '1.2 PureTech acil kontrol: Yağ basıncı alt sınırın altında. Aracı zorlamadan karter süzgeci, yağ pompası ve triger kayışı kontrol edilmeli.',
+    P15A8: 'Yağ basınç sensörü/müşürü, kablo soketi (yağ sızıntısı) ve yağ basınç elektrovanası kontrol edilmeli.',
+    P0521: 'Yağ basınç müşürü, kablo soketi ve gerçek yağ basıncı (manometre ile) kontrol edilmeli.',
+    P0016: '1.2 PureTech / THP kontrol: Yağlı triger kayışı uzaması/diş atlaması, VVT (kam mili ayar) elektrovanası filtresi ve kam/krank sensörleri kontrol edilmeli.',
+    P0011: 'Emme VVT (kam mili faz ayar) elektrovanası süzgeci yağlı kayış kalıntılarıyla tıkanmış olabilir; VVT solenoidi ve yağ seviyesi kontrol edilmeli.',
+    P0014: 'Egzoz VVT elektrovanası ve süzgeci, yağ kalitesi ve triger zamanlaması kontrol edilmeli.',
+    P0087: 'Direkt enjeksiyon (PureTech / THP) yüksek basınç yakıt pompası (HPFP), yakıt rayı basınç sensörü ve depo içi alçak basınç pompası kontrol edilmeli.',
+    P0597: 'C4 B7 kronik arıza: Elektronik kontrollü termostat gövdesinin ısıtıcı direnci veya soketindeki soğutma suyu sızıntısı kontrol edilmeli.',
+    P0598: 'C4 B7 elektronik termostat gövdesi veya kablo tesisatı kısa devresi kontrol edilmeli.',
+    P0599: 'C4 B7 elektronik termostat gövdesi ısıtıcı devresi açık/kısa devre; sokette antifriz nemi olup olmadığına bakın.',
+    P0300: '1.2 PureTech (3 silindir): İridyum bujiler (PureTech buji ömrüne hassastır), ateşleme bobinleri, enjektörler ve emme supap kurumu kontrol edilmeli.',
+    P1336: '1.2 PureTech tekleme (yakıt kesmeli): Bujiler, ateşleme bobinleri, yüksek basınç yakıt pompası (HPFP) ve emme supaplarında kurum birikimi kontrol edilmeli.',
+    P1337: 'Silindir 1 (triger tarafından değil, PSA\'da genelde volan tarafından 1. silindir sayılır — ustaya hatırlatın): Buji, bobin ve enjektör kontrol edilmeli.',
+    P1338: 'Silindir 2: Buji ve ateşleme bobini yer değiştirilerek test edilebilir; enjektör kontrol edilmeli.',
+    P1339: 'Silindir 3: Buji, bobin ve enjektör kontrol edilmeli.',
+    P1385: '1.2 PureTech süper vuruntu (LSPI): Düşük devirde yüksek gaz yüklemesinden kaçının; doğru PSA onaylı düşük küllü yağ, bujiler ve emme supap kurumu kontrol edilmeli.',
+    P0171: 'Emme havası kaçağı (turbo hortumları / külbütör kapağı PCV diyaframı), yakıt basıncı ve MAP sensörü kontrol edilmeli.',
+    P0299: 'Turbo hortum kelepçeleri, wastegate vakum aktüatörü, elektrovanası (N75) ve turbo bypass valfi kontrol edilmeli.',
+    P0420: 'Katalizör, ön/arka oksijen sensörleri ve egzoz kaçağı kontrol edilmeli.',
+    P0715: 'EAT6 (Aisin TF-71SC): Şanzıman giriş türbin hız sensörü, soketi ve şanzıman yağ durumu kontrol edilmeli.',
+    P0741: 'EAT6 tork konvertörü kilitleme kavraması veya şanzıman yağı (AW-1) seviyesi/eskimesi kontrol edilmeli.',
+    P2600: '1.2 PureTech / THP turbo yardımcı elektrikli su pompası (stop sonrası turboyu soğutan pompa) ve sigortası kontrol edilmeli.'
   };
 
   const SYS = { P: 'Motor / şanzıman', C: 'Şasi (fren, süspansiyon, direksiyon)', B: 'Gövde (airbag, konfor, aydınlatma)', U: 'Ağ / iletişim' };
@@ -131,6 +202,45 @@
     0x94: 'beklenmeyen çalışma', 0x96: 'bileşen iç arızası', 0x97: 'bileşen veya sistem çalışması engellendi',
     0x98: 'bileşen veya sistem aşırı ısınma'
   };
+
+  // PSA / Citroën C4 B7 şase numarası (VIN) çözücü
+  const PSA_ENGINES = {
+    HNY: { name: '1.2 PureTech 130 (EB2DTS)', ecu: 'Valeo VD46 / VD56', fuel: 'Benzin Turbo' },
+    HNZ: { name: '1.2 PureTech 110 (EB2DT)', ecu: 'Valeo VD46 / VD56', fuel: 'Benzin Turbo' },
+    HNP: { name: '1.2 PureTech 110 (EB2ADT)', ecu: 'Valeo VD56', fuel: 'Benzin Turbo' },
+    HNS: { name: '1.2 PureTech 130 (EB2ADTS)', ecu: 'Valeo VD56', fuel: 'Benzin Turbo' },
+    HMZ: { name: '1.2 VTi / PureTech 82 (EB2)', ecu: 'Valeo V46', fuel: 'Benzin' },
+    '5GZ': { name: '1.6 THP 165 (EP6FDT)', ecu: 'Bosch MED17.4.4', fuel: 'Benzin Turbo' },
+    '5FV': { name: '1.6 THP 155 (EP6CDT)', ecu: 'Bosch MED17.4.2', fuel: 'Benzin Turbo' },
+    '5FS': { name: '1.6 VTi 120 (EP6C)', ecu: 'Bosch MEV17.4.2', fuel: 'Benzin' },
+    '5FW': { name: '1.6 VTi 120 (EP6)', ecu: 'Bosch MEV17.4', fuel: 'Benzin' },
+    '8FP': { name: '1.4 VTi 95 (EP3C)', ecu: 'Bosch MEV17.4.2', fuel: 'Benzin' },
+    '9HP': { name: '1.6 HDi 92 (DV6DTED)', ecu: 'Bosch EDC17C10', fuel: 'Dizel' },
+    '9HR': { name: '1.6 e-HDi 112/115 (DV6C)', ecu: 'Continental SID807', fuel: 'Dizel' },
+    '9HL': { name: '1.6 e-HDi 112 (DV6C)', ecu: 'Continental SID807', fuel: 'Dizel' },
+    BHY: { name: '1.6 BlueHDi 100 (DV6FD)', ecu: 'Bosch EDC17C60', fuel: 'Dizel' },
+    BHZ: { name: '1.6 BlueHDi 120 (DV6FC)', ecu: 'Delphi DCM6.2', fuel: 'Dizel' },
+    RHE: { name: '2.0 HDi 150 (DW10CTED4)', ecu: 'Delphi DCM3.5', fuel: 'Dizel' },
+    RHH: { name: '2.0 HDi 163 (DW10CTED4)', ecu: 'Delphi DCM3.5', fuel: 'Dizel' }
+  };
+
+  function decodeVin(vin) {
+    const v = String(vin || '').trim().toUpperCase();
+    if (v.length < 11) return null;
+    const wmi = v.slice(0, 3);
+    const brand = wmi === 'VF7' ? 'Citroën' : wmi === 'VF3' ? 'Peugeot' : wmi === 'VR7' ? 'Citroën / DS' : wmi === 'VR3' ? 'Peugeot' : 'PSA';
+    const body = v.slice(3, 5);
+    const model = body === 'NC' ? 'C4 II (B7)' : body === 'NX' ? 'DS4' : body === '3D' ? 'C4 Picasso II' : body === 'LC' ? 'C4 I' : ('Kasa ' + body);
+    const engCode = v.slice(5, 8);
+    const eng = PSA_ENGINES[engCode] || null;
+    const isB7 = wmi === 'VF7' && body === 'NC';
+    return {
+      vin: v, brand, model, isB7, engCode,
+      engine: eng ? eng.name : ('Motor kodu ' + engCode),
+      ecu: eng ? eng.ecu : 'CAN2010',
+      fuel: eng ? eng.fuel : ''
+    };
+  }
 
   function decode2(b0, b1) {
     return 'PCBU'[b0 >> 6] + ((b0 >> 4) & 3) + (b0 & 0x0F).toString(16).toUpperCase() + P.h2(b1);
@@ -192,6 +302,6 @@
     };
   }
 
-  Object.assign(P, { DTC_DESC: D, decode2, describe, ftbText, udsStatus, kwpStatus, mkDtc });
+  Object.assign(P, { DTC_DESC: D, decodeVin, decode2, describe, ftbText, udsStatus, kwpStatus, mkDtc });
   if (typeof module !== 'undefined' && module.exports) module.exports = P;
 })(typeof window !== 'undefined' ? window : globalThis);

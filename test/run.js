@@ -131,6 +131,17 @@ async function psaValues() {
   ok(F('03')([2]) === 'Kapalı döngü (normal)', 'yakıt sistemi metni');
   ok(new Set(P.PIDS.map(d => d.pid)).size === P.PIDS.length, 'PID tablosunda tekrar yok');
   ok(P.DEFAULT_LIVE.every(k => P.PIDS.some(d => d.key === k)), 'varsayılan seçim tabloda');
+  ok(P.C4_PRESETS.every(pr => pr.keys.every(k => P.PIDS.some(d => d.key === k))), 'C4 B7 hazır tabloları geçerli');
+  const vPt = P.decodeVin('VF7NCHNYTFY123456');
+  ok(vPt && vPt.isB7 && /PureTech 130/.test(vPt.engine), 'VIN çözücü C4 B7 PureTech');
+  ok(P.scaleDid([0x0A, 0x28], { scale: 0.001, dec: 2 }) === 2.6, 'DID formül ölçekleme (mbar -> bar)');
+  ok(P.scaleDid([0x76], { offset: -40 }) === 78, 'DID ofset ölçekleme (sıcaklık)');
+  ok(P.makeRawPid(0x99).f([0x01, 0x2C]) === '300  [01 2C]', 'bilinmeyen ham OBD PID okuyucu');
+  ok(/PureTech/.test(P.mkDtc(0x15, 0xA1, 0x00, 0x09, 'UDS').hint), 'PureTech P15A1 ipucu');
+  const rObdM = await P.scanDids(elm, P.findAnyEcu('obd_motor'), [[0xD40A, 0xD40B]]);
+  ok(rObdM.proto === 'UDS' && rObdM.found.length === 2, 'OBD 7E0 UDS DID tarama');
+  const rObdE = await P.scanDids(elm, P.findAnyEcu('obd_eat6'), [[0xD401, 0xD402]]);
+  ok(rObdE.proto === 'UDS' && rObdE.found.length === 2, 'EAT6 7E1 UDS DID tarama');
 }
 
 async function realCar() {
